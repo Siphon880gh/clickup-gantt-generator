@@ -1,6 +1,18 @@
 # ClickUp CSV Generator
 
-A Node.js CLI tool using **Inquirer** that generates ClickUp-importable CSV files from task lists with flexible date scheduling.
+## Overview
+
+**A flexible Node.js CLI for generating ClickUp-importable CSV files with three scheduling patterns:**
+
+- **Weekly Cycling**: Tasks repeat on specific weekdays (M/T/W/H/F/S/U) over N weeks
+- **Rolling Cycling**: Tasks repeat in multi-day blocks with configurable gaps between occurrences
+- **One-Time Scheduled**: Individual tasks with custom start and due dates
+
+**Perfect for:** Team standups, sprint planning, work schedules, recurring meetings, and mixed task workflows.
+
+> 📖 **For developers:** See [`context.md`](./context.md) for architecture details, code flow, and extension guidance.
+
+---
 
 ## Features
 
@@ -30,7 +42,8 @@ The CLI will guide you through:
 1. **Select an input file** from `inputs/`
 2. **Select tasks for weekly cycling** - Choose which tasks should repeat on specific weekdays
 3. **Select tasks for rolling cycling** - Choose which remaining tasks should repeat with rolling patterns
-4. **Configure each weekly task individually**:
+4. **Confirm one-time scheduled tasks** - View remaining tasks that will be scheduled individually
+5. **Configure each weekly task individually**:
    - Select weekdays to repeat:
      - **M** = Monday
      - **T** = Tuesday
@@ -41,15 +54,15 @@ The CLI will guide you through:
      - **U** = Sunday
    - Set start date (YYYY-MM-DD format)
    - Number of weeks to generate
-5. **Configure each rolling task individually**:
+6. **Configure each rolling task individually**:
    - Set start date (YYYY-MM-DD format)
    - Number of occurrences to generate
    - How many days in a row for each occurrence
    - How many days between each occurrence
-6. **Configure each one-time task individually**:
+7. **Configure each one-time task individually**:
    - Set start date (YYYY-MM-DD format, defaults to today)
    - Set due date (YYYY-MM-DD format, defaults to today)
-7. **Configure CSV options**:
+8. **Configure CSV options**:
    - Optional List name for ClickUp mapping
 
 ## Example Workflow
@@ -62,7 +75,7 @@ Let's say you have these tasks:
 **Workflow:**
 1. Select "Write weekly status update" for **weekly cycling**
 2. Select "Plan sprint" for **rolling cycling**
-3. Leave "Publish blog post" as a **one-time task**
+3. Confirm "Publish blog post" will be a **one-time task**
 4. Configure "Write weekly status update":
    - Days: M, W, F (3x per week)
    - Start: 2025-10-20

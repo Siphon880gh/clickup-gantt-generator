@@ -152,7 +152,21 @@ async function main() {
   // Tasks with no cycling
   const noCycleTasks = tasks.filter(t => !weeklyTasks.includes(t) && !rollingTasks.includes(t));
 
-  // Step 4: Configure each weekly task
+  // Step 4: Display one-time scheduled tasks
+  if (noCycleTasks.length > 0) {
+    await inquirer.prompt([
+      {
+        type: "list",
+        name: "confirm",
+        message: `ONE-TIME SCHEDULED PATTERN: Remaining ${noCycleTasks.length} task(s) will be scheduled individually:`,
+        choices: noCycleTasks.map(task => ({ name: task, value: task, disabled: true })).concat([
+          { name: "── Continue to configure ──", value: "continue" }
+        ])
+      }
+    ]);
+  }
+
+  // Step 5: Configure each weekly task
   const weeklyTaskConfigs = [];
   for (const task of weeklyTasks) {
     console.log(`\n${"=".repeat(60)}`);
@@ -206,7 +220,7 @@ async function main() {
     });
   }
 
-  // Step 5: Configure each rolling task
+  // Step 6: Configure each rolling task
   const rollingConfigs = [];
   for (const task of rollingTasks) {
     console.log(`\n${"=".repeat(60)}`);
@@ -260,8 +274,9 @@ async function main() {
     });
   }
 
-  // Step 6: Configure each one-time task
+  // Step 7: Configure each one-time task
   const oneTimeTaskConfigs = [];
+  
   for (const task of noCycleTasks) {
     console.log(`\n${"=".repeat(60)}`);
     console.log(`📝 ONE-TIME TASK: "${task}"`);
@@ -304,7 +319,7 @@ async function main() {
     });
   }
 
-  // Step 7: CSV metadata options
+  // Step 8: CSV metadata options
   const { listName } = await inquirer.prompt([
     {
       type: "input",
@@ -315,7 +330,7 @@ async function main() {
     }
   ]);
 
-  // Step 8: Build rows
+  // Step 9: Build rows
   const rows = [];
 
   // Process weekly tasks
@@ -356,7 +371,7 @@ async function main() {
     rows.push(row);
   }
 
-  // Step 9: Write CSV
+  // Step 10: Write CSV
   const csv = Papa.unparse(rows, { header: true });
   const stamp = new Date();
   const outName = `clickup_import_${stamp.getFullYear()}${String(
