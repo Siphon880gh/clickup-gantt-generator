@@ -77,6 +77,24 @@ function generateDatesByPattern(startDate, weeks, selectedLetters) {
   return results;
 }
 
+// Generate dates based on occurrence pattern (days in a row, days between)
+function generateDatesByOccurrencePattern(startDate, occurrences, daysInRow, daysBetween) {
+  const results = [];
+  const start = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+  
+  let currentDay = 0;
+  for (let i = 0; i < occurrences; i++) {
+    // Add consecutive days for this occurrence
+    for (let j = 0; j < daysInRow; j++) {
+      results.push(addDays(start, currentDay + j));
+    }
+    // Move to next occurrence (skip the gap days)
+    currentDay += daysInRow + daysBetween;
+  }
+  
+  return results;
+}
+
 // ---- Main ----
 async function main() {
   ensureDirs();
@@ -88,38 +106,63 @@ async function main() {
     process.exit(1);
   }
 
-  const answers1 = await inquirer.prompt([
+  // Step 1: Choose input file
+  const { fileName } = await inquirer.prompt([
     {
       type: "list",
       name: "fileName",
       message: "Choose a task list from inputs/:",
       choices: files
-    },
-    {
-      type: "confirm",
-      name: "cycleEach",
-      message: "Do you want to cycle each task on specific weekdays (M,T,W,H,F,S,U)?",
-      default: true
     }
   ]);
 
-  const tasks = parseTasksFromFile(path.join(INPUT_DIR, answers1.fileName));
+  const tasks = parseTasksFromFile(path.join(INPUT_DIR, fileName));
   if (!tasks.length) {
     console.log("The selected file has no tasks.");
     process.exit(1);
   }
 
-  let weekdayLetters = [];
-  let startDate = new Date();
-  let weeks = 4;
+  // Step 2: Select tasks to cycle weekly
+  const { weeklyTasks } = await inquirer.prompt([
+    {
+      type: "checkbox",
+      name: "weeklyTasks",
+      message: "WEEKLY PATTERN: Select tasks to cycle weekly (use SPACE to select, ENTER to confirm):",
+      choices: tasks.map(task => ({ name: task, value: task }))
+    }
+  ]);
 
-  if (answers1.cycleEach) {
+  // Remaining tasks
+  const remainingTasks = tasks.filter(t => !weeklyTasks.includes(t));
+
+  // Step 3: Select tasks to cycle with rolling pattern
+  let rollingTasks = [];
+  if (remainingTasks.length > 0) {
+    const result = await inquirer.prompt([
+      {
+        type: "checkbox",
+        name: "rollingTasks",
+        message: "ROLLING PATTERN: Select tasks to cycle with rolling pattern (use SPACE to select, ENTER to confirm):",
+        choices: remainingTasks.map(task => ({ name: task, value: task }))
+      }
+    ]);
+    rollingTasks = result.rollingTasks;
+  }
+
+  // Tasks with no cycling
+  const noCycleTasks = tasks.filter(t => !weeklyTasks.includes(t) && !rollingTasks.includes(t));
+
+  // Step 4: Configure each weekly task
+  const weeklyTaskConfigs = [];
+  for (const task of weeklyTasks) {
+    console.log(`\n${"=".repeat(60)}`);
+    console.log(`📅 WEEKLY TASK: "${task}"`);
+    console.log(`${"=".repeat(60)}`);
     const { days, start, weeksCount } = await inquirer.prompt([
       {
         type: "checkbox",
         name: "days",
-        message:
-          "Pick weekdays to repeat (H=Thu, U=Sun). Use SPACE to select, ENTER to confirm:",
+        message: `[${task}] Pick weekdays to repeat (H=Thu, U=Sun):`,
         choices: [
           { name: "M (Mon)", value: "M" },
           { name: "T (Tue)", value: "T" },
@@ -134,7 +177,7 @@ async function main() {
       {
         type: "input",
         name: "start",
-        message: "Start date (YYYY-MM-DD):",
+        message: `[${task}] Start date (YYYY-MM-DD):`,
         default: ymd(new Date()),
         validate: (v) => {
           try {
@@ -148,30 +191,121 @@ async function main() {
       {
         type: "number",
         name: "weeksCount",
-        message: "Number of weeks to generate:",
+        message: `[${task}] Number of weeks to generate:`,
         default: 4,
         validate: (n) => (Number.isFinite(n) && n > 0 ? true : "Enter a positive number")
       }
     ]);
-    weekdayLetters = days;
-    startDate = parseISODateLoose(start);
-    weeks = weeksCount;
+    
+    weeklyTaskConfigs.push({
+      task,
+      type: "weekly",
+      days,
+      startDate: parseISODateLoose(start),
+      weeks: weeksCount
+    });
   }
 
-  // Optional metadata for CSV (helps mapping in ClickUp)
-  const { includeStartDates, dueEqualsStart, listName } = await inquirer.prompt([
-    {
-      type: "confirm",
-      name: "includeStartDates",
-      message: "Include a Start date column?",
-      default: true
-    },
-    {
-      type: "confirm",
-      name: "dueEqualsStart",
-      message: "Set Due date equal to Start date?",
-      default: true
-    },
+  // Step 5: Configure each rolling task
+  const rollingConfigs = [];
+  for (const task of rollingTasks) {
+    console.log(`\n${"=".repeat(60)}`);
+    console.log(`🔄 ROLLING TASK: "${task}"`);
+    console.log(`${"=".repeat(60)}`);
+    const { start, occurrences, daysInRow, daysBetween } = await inquirer.prompt([
+      {
+        type: "input",
+        name: "start",
+        message: `[${task}] Start date (YYYY-MM-DD):`,
+        default: ymd(new Date()),
+        validate: (v) => {
+          try {
+            parseISODateLoose(v);
+            return true;
+          } catch (e) {
+            return String(e.message || e);
+          }
+        }
+      },
+      {
+        type: "number",
+        name: "occurrences",
+        message: `[${task}] How many occurrences to generate?`,
+        default: 4,
+        validate: (n) => (Number.isFinite(n) && n > 0 ? true : "Enter a positive number")
+      },
+      {
+        type: "number",
+        name: "daysInRow",
+        message: `[${task}] How many days in a row for each occurrence?`,
+        default: 1,
+        validate: (n) => (Number.isFinite(n) && n > 0 ? true : "Enter a positive number")
+      },
+      {
+        type: "number",
+        name: "daysBetween",
+        message: `[${task}] How many days between each occurrence?`,
+        default: 7,
+        validate: (n) => (Number.isFinite(n) && n >= 0 ? true : "Enter a non-negative number")
+      }
+    ]);
+    
+    rollingConfigs.push({
+      task,
+      type: "rolling",
+      startDate: parseISODateLoose(start),
+      occurrences,
+      daysInRow,
+      daysBetween
+    });
+  }
+
+  // Step 6: Configure each one-time task
+  const oneTimeTaskConfigs = [];
+  for (const task of noCycleTasks) {
+    console.log(`\n${"=".repeat(60)}`);
+    console.log(`📝 ONE-TIME TASK: "${task}"`);
+    console.log(`${"=".repeat(60)}`);
+    const { start, end } = await inquirer.prompt([
+      {
+        type: "input",
+        name: "start",
+        message: `[${task}] Start date (YYYY-MM-DD):`,
+        default: ymd(new Date()),
+        validate: (v) => {
+          try {
+            parseISODateLoose(v);
+            return true;
+          } catch (e) {
+            return String(e.message || e);
+          }
+        }
+      },
+      {
+        type: "input",
+        name: "end",
+        message: `[${task}] Due date (YYYY-MM-DD):`,
+        default: ymd(new Date()),
+        validate: (v) => {
+          try {
+            parseISODateLoose(v);
+            return true;
+          } catch (e) {
+            return String(e.message || e);
+          }
+        }
+      }
+    ]);
+    
+    oneTimeTaskConfigs.push({
+      task,
+      startDate: parseISODateLoose(start),
+      endDate: parseISODateLoose(end)
+    });
+  }
+
+  // Step 7: CSV metadata options
+  const { listName } = await inquirer.prompt([
     {
       type: "input",
       name: "listName",
@@ -181,35 +315,48 @@ async function main() {
     }
   ]);
 
-  // Build rows
-  // Minimal ClickUp-friendly columns: "Task name", "Start date", "Due date"
+  // Step 8: Build rows
   const rows = [];
-  if (answers1.cycleEach) {
-    const dates = generateDatesByPattern(startDate, weeks, weekdayLetters);
-    for (const task of tasks) {
-      for (const d of dates) {
-        const row = {
-          "Task name": task
-        };
-        if (includeStartDates) row["Start date"] = ymd(d);
-        row["Due date"] = dueEqualsStart ? ymd(d) : ""; // leave blank if not tying due to start
-        if (listName) row["List"] = listName;
-        rows.push(row);
-      }
-    }
-  } else {
-    // No cycling: emit tasks without dates (you can map dates in ClickUp or bulk-edit later)
-    for (const task of tasks) {
-      const row = {
-        "Task name": task
-      };
-      if (includeStartDates) row["Start date"] = "";
-      row["Due date"] = "";
+
+  // Process weekly tasks
+  for (const config of weeklyTaskConfigs) {
+    const dates = generateDatesByPattern(config.startDate, config.weeks, config.days);
+    for (const d of dates) {
+      const row = { "Task name": config.task };
+      row["Start date"] = ymd(d);
+      row["Due date"] = ymd(d);
       if (listName) row["List"] = listName;
       rows.push(row);
     }
   }
 
+  // Process rolling tasks
+  for (const config of rollingConfigs) {
+    const dates = generateDatesByOccurrencePattern(
+      config.startDate, 
+      config.occurrences, 
+      config.daysInRow, 
+      config.daysBetween
+    );
+    for (const d of dates) {
+      const row = { "Task name": config.task };
+      row["Start date"] = ymd(d);
+      row["Due date"] = ymd(d);
+      if (listName) row["List"] = listName;
+      rows.push(row);
+    }
+  }
+
+  // Process one-time tasks
+  for (const config of oneTimeTaskConfigs) {
+    const row = { "Task name": config.task };
+    row["Start date"] = ymd(config.startDate);
+    row["Due date"] = ymd(config.endDate);
+    if (listName) row["List"] = listName;
+    rows.push(row);
+  }
+
+  // Step 9: Write CSV
   const csv = Papa.unparse(rows, { header: true });
   const stamp = new Date();
   const outName = `clickup_import_${stamp.getFullYear()}${String(
@@ -222,6 +369,10 @@ async function main() {
   fs.writeFileSync(outPath, csv, "utf8");
 
   console.log(`\n✅ CSV written to: ${outPath}`);
+  console.log(`   📊 Total rows: ${rows.length}`);
+  console.log(`   📅 Weekly tasks: ${weeklyTaskConfigs.length}`);
+  console.log(`   🔄 Rolling tasks: ${rollingConfigs.length}`);
+  console.log(`   📝 One-time tasks: ${oneTimeTaskConfigs.length}`);
   console.log(
     `\nImport in ClickUp: Settings → Import/Export → Import → Spreadsheet → map "Task name", "Start date", "Due date"${listName ? ', and "List"' : ""}.`
   );
