@@ -1,0 +1,10 @@
+{
+  "name": "clickup-csv-gen",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "inquirer": "^9.3.7",
+    "papaparse": "^5.4.1"
+  }
+}
+
